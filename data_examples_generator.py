@@ -5,11 +5,15 @@ from ctypes import *
 import pandas as pd
 import numpy as np
 import pandas
+import os
 
 from morse_translator import encrypt
 
 if __name__ == '__main__':
     TIME_DISPERSION = -0.01, 0.01
+
+    # create destination folder if not exists
+    os.system('mkdir -p data_examples')
 
     # create digital sequence
     morse_message = encrypt('EXAMPLE WAVEFORM ' * 5)
