@@ -31,7 +31,7 @@ if __name__ == '__main__':
     for meas_cycle in range(1, 101):
         _time_array = time_array.copy() + np.random.uniform(*TIME_DISPERSION, len(time_array))
         cycles_dict[meas_cycle] = pandas.DataFrame.from_dict({'TIME': _time_array, 'D0': digital_sequence_array})
-        cycles_dict[meas_cycle].to_csv(f'data_examples/{meas_cycle:05d}.csv')
+        cycles_dict[meas_cycle].to_csv(f'data_examples/process_{meas_cycle:05d}.csv')
 
         # optionally show plots
         if ax is None:
