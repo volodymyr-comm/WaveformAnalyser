@@ -129,4 +129,7 @@ dmypy.json
 .pyre/
 
 # Input data example files
-#data_examples/*
+data_examples/*
+
+# pycharm related
+.idea
