@@ -4,13 +4,26 @@ from typing import Dict
 from ctypes import *
 import pandas as pd
 import numpy as np
-import pandas
 import os
 
 from morse_translator import encrypt
 
 if __name__ == '__main__':
     TIME_DISPERSION = -0.01, 0.01
+    in_var_dict = {
+        'D0': {
+            'Time dispersion': (-0.01, 0.01),
+        },
+        'D1': {
+            'Time dispersion': (-0.02, 0.01),
+        },
+        'D2': {
+            'Time dispersion': (-0.02, 0.03),
+        },
+        'D3': {
+            'Time dispersion': (-0.03, 0.03),
+        }
+    }
 
     # create destination folder if not exists
     os.system('mkdir -p data_examples')
@@ -29,13 +42,22 @@ if __name__ == '__main__':
     cycles_dict: Dict[int, pd.DataFrame] = {}
     ax: plt.plot = None
     for meas_cycle in range(1, 101):
-        _time_array = time_array.copy() + np.random.uniform(*TIME_DISPERSION, len(time_array))
-        cycles_dict[meas_cycle] = pandas.DataFrame.from_dict({'TIME': _time_array, 'D0': digital_sequence_array})
+        cycle_data_dfs_list = list()
+        for ch, var in in_var_dict.items():
+            _time_array = time_array.copy() + np.random.uniform(*var['Time dispersion'], len(time_array))
+            cycle_data_dfs_list.append(pd.DataFrame.from_dict({'TIME': _time_array, ch: digital_sequence_array})
+                                       .set_index('TIME')
+                                       )
+        cycles_dict[meas_cycle] = pd.concat(cycle_data_dfs_list)\
+            .sort_index()\
+            .fillna(method='ffill')\
+            .fillna(method='bfill')
         cycles_dict[meas_cycle].to_csv(f'data_examples/process_{meas_cycle:05d}.csv')
+        print(cycles_dict[meas_cycle])
 
         # optionally show plots
         if ax is None:
-            ax = cycles_dict[meas_cycle].set_index('TIME', drop=True).plot()
+            ax = cycles_dict[meas_cycle].plot(legend=False)
         else:
-            cycles_dict[meas_cycle].set_index('TIME', drop=True).plot(ax=ax)
+            cycles_dict[meas_cycle].plot(ax=ax, legend=False)
     plt.show()
