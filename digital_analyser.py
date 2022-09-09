@@ -60,25 +60,23 @@ class DigitalAnalyser:
 
     def plot2pdf(self, path, plot_type):
         with PdfPages(path) as pdf:
-            # self._data_df.unstack(level=0).plot(subplots=True, legend=False)
-            self._plot_concept()
             # todo eventual multipage support
-            pdf.savefig()
-            plt.close()
-        if plot_type == 'scatter':
+            if plot_type == 'scatter':
+                # self._data_df.unstack(level=0).plot(subplots=True, legend=False)
+                self._plot_scatter_concept()
+                pdf.savefig()
+                plt.close()
 
-            self._data_df.unstack(level=0).plot(subplots=True, legend=False)
-
-        else:
-            raise Exception(f'Unsupported plot type "{plot_type}"')
+            else:
+                raise Exception(f'Unsupported plot type "{plot_type}"')
 
     def get_dataframe(self):
         return self._data_df.copy()
 
-    def _plot_concept(self):
+    def _plot_scatter_concept(self):
         # todo: check unexpected "ramps" on time-indexed dataframes
         axs = list()
-        df.groupby(level=0, axis=0).apply(
+        self._data_df.groupby(level=0, axis=0).apply(
             lambda x: axs.append(x.droplevel(0).plot(subplots=True, legend=False, ax=axs[-1] if len(axs) else None)))
 
 
@@ -89,7 +87,7 @@ if __name__ == '__main__':
 
     da.set_index('TIME')
     print(da.get_dataframe())
-    da._plot_concept()
+    da._plot_scatter_concept()
     da.plot2pdf('scatter.pdf', 'scatter')
     print(da.get_dataframe().unstack(level=0).columns)
     print(da.get_dataframe().swaplevel())
