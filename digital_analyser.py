@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import pyplot as plt
 from typing import Union, Iterable
 import pandas as pd
@@ -28,13 +29,14 @@ def files2dataframe(path: str, name_regex: str, record_name_regex: str):
     os.chdir(path)
     collective_df = pd.concat(map(pd.read_csv, file_names), axis=0, keys=record_names)
     os.chdir(cwd)
+    collective_df.index.names = ['Record', 'Row']
+    collective_df.sort_index(inplace=True)
     return collective_df
 
 
 class DigitalAnalyser:
     def __int__(self):
         self._data_df: pd.DataFrame
-        print(self._data_df)
 
     def import_from_directory(self, path: str, name_regex: str, record_name_regex: str):
         self._data_df = files2dataframe(path, name_regex, record_name_regex)
@@ -49,18 +51,46 @@ class DigitalAnalyser:
                 cols_requested.append(i)
             else:
                 raise Exception(f'No column name "{i}: in data')
-            print(self._data_df[cols_requested])
-        self._data_df = self._data_df[cols_requested]
+        self._data_df = self._data_df.filter(cols_requested, axis=1)
+
+    def set_index(self, index, **kwargs):
+        self._data_df.reset_index(inplace=True)
+        self._data_df.drop('Row', inplace=True, axis=1)
+        self._data_df.set_index(['Record', index], inplace=True, **kwargs)
+
+    def plot2pdf(self, path, plot_type):
+        with PdfPages(path) as pdf:
+            # self._data_df.unstack(level=0).plot(subplots=True, legend=False)
+            self._plot_concept()
+            # todo eventual multipage support
+            pdf.savefig()
+            plt.close()
+        if plot_type == 'scatter':
+
+            self._data_df.unstack(level=0).plot(subplots=True, legend=False)
+
+        else:
+            raise Exception(f'Unsupported plot type "{plot_type}"')
 
     def get_dataframe(self):
         return self._data_df.copy()
 
+    def _plot_concept(self):
+        # todo: check unexpected "ramps" on time-indexed dataframes
+        axs = list()
+        df.groupby(level=0, axis=0).apply(
+            lambda x: axs.append(x.droplevel(0).plot(subplots=True, legend=False, ax=axs[-1] if len(axs) else None)))
+
 
 if __name__ == '__main__':
     da = DigitalAnalyser()
-    collective_df = da.import_from_directory('data_examples', r'^process_[0-9]+.csv$', r'^process_([0-9]+)?.csv$')
-    da.filter_columns([re.compile(r'^D[0-9]+$')])
-    print(da.get_dataframe().unstack(level=0))
-    print(da.get_dataframe().unstack(level=0)['D1'])
-    da.get_dataframe().unstack(level=0)['D1'].plot(legend=False)
+    da.import_from_directory('data_examples', r'^process_[0-9]+.csv$', r'^process_([0-9]+)?.csv$')
+    da.filter_columns(['TIME', re.compile(r'^D[0-9]+$')])
+
+    da.set_index('TIME')
+    print(da.get_dataframe())
+    da._plot_concept()
+    da.plot2pdf('scatter.pdf', 'scatter')
+    print(da.get_dataframe().unstack(level=0).columns)
+    print(da.get_dataframe().swaplevel())
     plt.show()
