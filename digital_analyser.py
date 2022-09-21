@@ -4,6 +4,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import pyplot as plt
 from typing import Union, Iterable
 import pandas as pd
+import numpy as np
 import re
 import os
 
@@ -53,17 +54,29 @@ class DigitalAnalyser:
                 raise Exception(f'No column name "{i}: in data')
         self._data_df = self._data_df.filter(cols_requested, axis=1)
 
-    def set_index(self, index, **kwargs):
+    def set_index(self, col_name, **kwargs):
         self._data_df.reset_index(inplace=True)
         self._data_df.drop('Row', inplace=True, axis=1)
-        self._data_df.set_index(['Record', index], inplace=True, **kwargs)
+        self._data_df.set_index(['Record', col_name], inplace=True, **kwargs)
+
+    def set_time_index(self, col_name, unit, **kwargs):
+        self._data_df.reset_index(inplace=True)
+        self._data_df.drop('Row', inplace=True, axis=1)
+        # self._data_dfindex].apply(pd.to_timedelta, unit='s')  # todo
+        # self._data_df[col_name] = pd.to_timedelta(self._data_df[col_name], unit=unit)
+        # self._data_df[col_name] = (self._data_df[col_name]).astype('datetime64[s]')
+        self._data_df[col_name] = pd.to_datetime(self._data_df[col_name], unit='s')
+        self._data_df.set_index(['Record', col_name], inplace=True, **kwargs)
+
+    def get_index_of_changes_df(self):
+        _data_df = self._data_df.copy()
 
     def plot2pdf(self, path, plot_type):
         with PdfPages(path) as pdf:
             # todo eventual multipage support
             if plot_type == 'scatter':
                 # self._data_df.unstack(level=0).plot(subplots=True, legend=False)
-                self._plot_scatter_concept()
+                self._plot_overlapping_charts_concept()
                 pdf.savefig()
                 plt.close()
 
@@ -73,22 +86,30 @@ class DigitalAnalyser:
     def get_dataframe(self):
         return self._data_df.copy()
 
-    def _plot_scatter_concept(self):
-        # todo: check unexpected "ramps" on time-indexed dataframes
+    def _resample_concept(self, rule):
+        print('>>>', self._data_df.resample(rule, level=1))
+
+    def _plot_overlapping_charts_concept(self):
         axs = list()
         self._data_df.groupby(level=0, axis=0).apply(
-            lambda x: axs.append(x.droplevel(0).plot(subplots=True, legend=False, ax=axs[-1] if len(axs) else None)))
+            lambda x: axs.append(x.droplevel(0).plot(subplots=True,
+                                                     legend=False,
+                                                     style='-',
+                                                     color=np.random.rand(3, ),
+                                                     ax=axs[-1] if len(axs) else None),
+                                 ))
 
 
 if __name__ == '__main__':
     da = DigitalAnalyser()
     da.import_from_directory('data_examples', r'^process_[0-9]+.csv$', r'^process_([0-9]+)?.csv$')
-    da.filter_columns(['TIME', re.compile(r'^D[0-9]+$')])
-
+    da.filter_columns(['TIME', re.compile(r'^D\d+$')])
     da.set_index('TIME')
+    # da.set_time_index('TIME', unit='s')
+    # da._resample_concept('0.01S')
     print(da.get_dataframe())
-    da._plot_scatter_concept()
-    da.plot2pdf('scatter.pdf', 'scatter')
-    print(da.get_dataframe().unstack(level=0).columns)
-    print(da.get_dataframe().swaplevel())
+    da._plot_overlapping_charts_concept()
+    # da.plot2pdf('scatter.pdf', 'scatter')
+    # print(da.get_dataframe().unstack(level=0).columns)
+    # print(da.get_dataframe().swaplevel())
     plt.show()
