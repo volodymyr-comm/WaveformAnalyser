@@ -8,8 +8,16 @@ import os
 
 from morse_translator import encrypt
 
+
+def round2multiple(number, multiple):
+    return round(multiple * round(number / multiple), 5)  # pay attention to round to 5 places after decimal!
+
+
 if __name__ == '__main__':
+    CYCLES: int = 20
     TIME_DISPERSION = -0.01, 0.01
+    SAMPLE_RATE = 0.01
+    TRIGGER_ON = 5
     in_var_dict = {
         'D0': {
             'Time dispersion': (-0.01, 0.01),
@@ -36,19 +44,27 @@ if __name__ == '__main__':
     # create ideal time array
     time_array = np.arange(len(digital_sequence_array))
     # make trigger om 5th point
-    time_array -= 5
+    time_array -= TRIGGER_ON
 
     # create dummy registrations with randomized time dispersion
     cycles_dict: Dict[int, pd.DataFrame] = {}
     ax: plt.plot = None
-    for meas_cycle in range(1, 101):
+    for meas_cycle in range(1, CYCLES + 1):
         cycle_data_dfs_list = list()
         for ch, var in in_var_dict.items():
             _time_array = time_array.copy() + np.random.uniform(*var['Time dispersion'], len(time_array))
-            cycle_data_dfs_list.append(pd.DataFrame.from_dict({'TIME': _time_array, ch: digital_sequence_array})
-                                       .set_index('TIME')
-                                       )
-        cycles_dict[meas_cycle] = pd.concat(cycle_data_dfs_list)\
+            cycle_data_dfs_list.append(
+                pd.DataFrame.from_dict({'TIME': _time_array, ch: digital_sequence_array}).set_index('TIME')
+            )
+        cycles_dict[meas_cycle] = pd.concat(cycle_data_dfs_list)
+        cycles_dict[meas_cycle] = cycles_dict[meas_cycle].reindex(
+            np.append(
+                np.arange(round2multiple(cycles_dict[meas_cycle].index.min(), SAMPLE_RATE),
+                          round2multiple(cycles_dict[meas_cycle].index.max() + SAMPLE_RATE, SAMPLE_RATE),
+                          SAMPLE_RATE),
+                cycles_dict[meas_cycle].index.values
+            )
+        )\
             .sort_index()\
             .fillna(method='ffill')\
             .fillna(method='bfill')
