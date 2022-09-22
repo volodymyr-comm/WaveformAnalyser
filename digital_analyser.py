@@ -68,9 +68,6 @@ class DigitalAnalyser:
         self._data_df[col_name] = pd.to_datetime(self._data_df[col_name], unit='s')
         self._data_df.set_index(['Record', col_name], inplace=True, **kwargs)
 
-    def get_index_of_changes_df(self):
-        _data_df = self._data_df.copy()
-
     def plot2pdf(self, path, plot_type):
         with PdfPages(path) as pdf:
             # todo eventual multipage support
@@ -99,6 +96,21 @@ class DigitalAnalyser:
                                                      ax=axs[-1] if len(axs) else None),
                                  ))
 
+    def get_change_dispersion_df(self):
+        _data_df = self._data_df.copy()
+        _data_df = _data_df.apply(lambda x: (x != x.shift()).cumsum())  # count each change of signal
+        _data_df.drop_duplicates(inplace=True)  # just to reduce the amount of data
+        _data_df = _data_df.groupby(level=0).apply(lambda x: x - x.iloc[0])  # count changes from 0 for each cycle
+        _data_df = _data_df.apply(lambda x: x.loc[x != x.shift()])
+        # concept, todo:
+        pd.concat(
+            [j.reset_index()
+             .dropna()
+             .rename(columns={i: '_change_no', 'TIME': i})
+             .set_index(['Record', '_change_no'])
+             for i, j in _data_df.iteritems()],
+            axis='columns')
+
 
 if __name__ == '__main__':
     da = DigitalAnalyser()
@@ -108,7 +120,8 @@ if __name__ == '__main__':
     # da.set_time_index('TIME', unit='s')
     # da._resample_concept('0.01S')
     print(da.get_dataframe())
-    da._plot_overlapping_charts_concept()
+    da.get_change_dispersion_df()
+    # da._plot_overlapping_charts_concept()
     # da.plot2pdf('scatter.pdf', 'scatter')
     # print(da.get_dataframe().unstack(level=0).columns)
     # print(da.get_dataframe().swaplevel())
