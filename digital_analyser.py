@@ -8,6 +8,9 @@ import numpy as np
 import re
 import os
 
+from helpers.digital import *
+from helpers.common import *
+
 
 def files2dataframe(path: str, name_regex: str, record_name_regex: str):
     """
@@ -36,8 +39,11 @@ def files2dataframe(path: str, name_regex: str, record_name_regex: str):
 
 
 class DigitalAnalyser:
-    def __int__(self):
-        self._data_df: pd.DataFrame
+
+    def __init__(self):
+        self._data_df: pd.DataFrame = pd.DataFrame()
+        self._change_times_df: pd.DataFrame = pd.DataFrame()
+        self.record_column_name = 'Record'
 
     def import_from_directory(self, path: str, name_regex: str, record_name_regex: str):
         self._data_df = files2dataframe(path, name_regex, record_name_regex)
@@ -57,23 +63,23 @@ class DigitalAnalyser:
     def set_index(self, col_name, **kwargs):
         self._data_df.reset_index(inplace=True)
         self._data_df.drop('Row', inplace=True, axis=1)
-        self._data_df.set_index(['Record', col_name], inplace=True, **kwargs)
+        self._data_df.set_index([self.record_column_name, col_name], inplace=True, **kwargs)
 
     def set_time_index(self, col_name, unit, **kwargs):
         self._data_df.reset_index(inplace=True)
         self._data_df.drop('Row', inplace=True, axis=1)
-        # self._data_dfindex].apply(pd.to_timedelta, unit='s')  # todo
+        # self._data_dfindex].apply(pd.to_timedelta, unit='s')
         # self._data_df[col_name] = pd.to_timedelta(self._data_df[col_name], unit=unit)
         # self._data_df[col_name] = (self._data_df[col_name]).astype('datetime64[s]')
-        self._data_df[col_name] = pd.to_datetime(self._data_df[col_name], unit='s')
-        self._data_df.set_index(['Record', col_name], inplace=True, **kwargs)
+        self._data_df[col_name] = pd.to_datetime(self._data_df[col_name], unit=unit)
+        self._data_df.set_index([self.record_column_name, col_name], inplace=True, **kwargs)
 
     def plot2pdf(self, path, plot_type):
         with PdfPages(path) as pdf:
             # todo eventual multipage support
             if plot_type == 'scatter':
                 # self._data_df.unstack(level=0).plot(subplots=True, legend=False)
-                self._plot_overlapping_charts_concept()
+                self.plot_overlapping_charts()
                 pdf.savefig()
                 plt.close()
 
@@ -83,33 +89,88 @@ class DigitalAnalyser:
     def get_dataframe(self):
         return self._data_df.copy()
 
-    def _resample_concept(self, rule):
-        print('>>>', self._data_df.resample(rule, level=1))
+    def plot_overlapping_charts(self):
+        plot_overlapping_charts_concept(self._data_df)
 
-    def _plot_overlapping_charts_concept(self):
-        axs = list()
-        self._data_df.groupby(level=0, axis=0).apply(
-            lambda x: axs.append(x.droplevel(0).plot(subplots=True,
-                                                     legend=False,
-                                                     style='-',
-                                                     color=np.random.rand(3, ),
-                                                     ax=axs[-1] if len(axs) else None),
-                                 ))
+    @property
+    def change_times_df(self):
+        # todo: expire if data in self._data_df were changed
+        # todo: make it a thread-safe
+        if self._change_times_df.empty:
+            self._change_times_df = signal_df_to_change_times_df(self._data_df)
+        return self._change_times_df
 
-    def get_change_dispersion_df(self):
-        _data_df = self._data_df.copy()
-        _data_df = _data_df.apply(lambda x: (x != x.shift()).cumsum())  # count each change of signal
-        _data_df.drop_duplicates(inplace=True)  # just to reduce the amount of data
-        _data_df = _data_df.groupby(level=0).apply(lambda x: x - x.iloc[0])  # count changes from 0 for each cycle
-        _data_df = _data_df.apply(lambda x: x.loc[x != x.shift()])
-        # concept, todo:
-        pd.concat(
-            [j.reset_index()
-             .dropna()
-             .rename(columns={i: '_change_no', 'TIME': i})
-             .set_index(['Record', '_change_no'])
-             for i, j in _data_df.iteritems()],
-            axis='columns')
+    def check_time_dispersion(self):
+        change_times_df = self.change_times_df
+        mean_change_time_df = change_times_df.mean(axis=1)
+        std_change_time_df = change_times_df.std(axis=1)
+        mean_to_current_df = change_times_df.subtract(mean_change_time_df, axis=0)
+        # plot_overlapping_charts_concept(mean_change_time_df)
+        # plot_overlapping_charts_concept(abs(mean_to_current_df))
+        mean_series = change_times_df.unstack().mean()
+        # change_times_df.unstack().transpose()
+        # mean_diff_df = change_times_df.unstack().transpose().subtract(mean_series, axis=0).transpose().stack()
+        # plot_overlapping_charts_concept(mean_diff_df)
+        # plot_overlapping_charts_concept(std_change_time_df)
+
+    def show_sts_std1(self):
+        change_times_df = self.change_times_df  # todo: thread-safety or copy
+        mean_change_time_series = change_times_df.mean(axis=1)
+        std_change_time_series = change_times_df.std(axis=1)
+        within_std_mask = change_times_df.loc[change_times_df.subtract(mean_change_time_series, axis=0).abs() <= std_change_time_series]
+        plot_overlapping_charts_concept(change_times_df[within_std_mask])
+        plot_overlapping_charts_concept(change_times_df[~within_std_mask])
+
+    def show_std1_concept1(self):
+        change_times_df = self.change_times_df  # todo: thread-safety or copy
+        change_times_unstacked_df = change_times_df.unstack()
+        mean_change_time_series = change_times_unstacked_df.mean()
+        std_change_time_series = change_times_unstacked_df.std()
+        change_times_dist_to_mean_df = change_times_unstacked_df.transpose().subtract(mean_change_time_series, axis=0).abs()
+        # Align indexes according to FutureWarning suggestion
+        change_times_dist_to_mean_df, std_change_time_series = change_times_dist_to_mean_df.align(std_change_time_series, axis=0, copy=False)
+        within_std_mask = change_times_dist_to_mean_df.le(std_change_time_series, axis=0)\
+            .transpose()\
+            .stack()
+        plot_overlapping_charts_concept(change_times_df)
+        # plot_overlapping_charts_concept(change_times_df[within_std_mask], color='green')
+        # plot_overlapping_charts_concept(change_times_df[~within_std_mask], color='red')
+        # todo for check only:
+        plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
+        plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
+
+    def show_std2(self):
+        change_times_df = self.change_times_df  # todo: thread-safety or copy
+        change_times_unstacked_df = change_times_df.unstack()
+        mean_change_time_series = change_times_unstacked_df.mean()
+        std_change_time_series = change_times_unstacked_df.std()
+        change_times_dist_to_mean_df = change_times_unstacked_df.transpose().subtract(mean_change_time_series, axis=0).abs()
+        # Align indexes according to FutureWarning suggestion
+        change_times_dist_to_mean_df, std_change_time_series = change_times_dist_to_mean_df.align(std_change_time_series, axis=0, copy=False)
+        within_std_mask = change_times_dist_to_mean_df.le(std_change_time_series * 2, axis=0)\
+            .transpose()\
+            .stack()
+        plot_overlapping_charts_concept(change_times_df)
+        # plot_overlapping_charts_concept(change_times_df[within_std_mask], color='green')
+        # plot_overlapping_charts_concept(change_times_df[~within_std_mask], color='red')
+        # todo for check only:
+        plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
+        plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
+
+    def show_std1_concept2(self):
+        change_times_df = self.change_times_df  # todo: thread-safety or copy
+        mean_change_time_series = change_times_df.groupby(level=1).mean()
+        std_change_time_series = change_times_df.groupby(level=1).std()
+        change_times_dist_to_mean_df = change_times_df.subtract(mean_change_time_series).abs()
+        # Align indexes according to FutureWarning suggestion
+        change_times_dist_to_mean_df, std_change_time_series = change_times_dist_to_mean_df.align(std_change_time_series, axis=0, copy=False)
+        within_std_mask = change_times_dist_to_mean_df.le(std_change_time_series, level=1)
+        plot_overlapping_charts_concept(change_times_df)
+        # plot_overlapping_charts_concept(change_times_df[within_std_mask], color='green')
+        # plot_overlapping_charts_concept(change_times_df[~within_std_mask], color='red')
+        # todo for check only:
+        plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
+        plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
 
 
 if __name__ == '__main__':
@@ -119,10 +180,13 @@ if __name__ == '__main__':
     da.set_index('TIME')
     # da.set_time_index('TIME', unit='s')
     # da._resample_concept('0.01S')
-    print(da.get_dataframe())
-    da.get_change_dispersion_df()
+    # print(da.get_dataframe())
+    # da.plot_overlapping_charts()
+    # da.check_time_dispersion()
+    # da.check_time_dispersion()
     # da._plot_overlapping_charts_concept()
     # da.plot2pdf('scatter.pdf', 'scatter')
     # print(da.get_dataframe().unstack(level=0).columns)
     # print(da.get_dataframe().swaplevel())
+    da.show_std1_concept2()
     plt.show()
