@@ -6,8 +6,6 @@ def signal_df_to_change_times_df(data: pd.DataFrame):
     Returns data frame with time of each change of digital signal in columns and multiindex of record & change count number
     """
     _data_df = data.copy()
-    # _data_df_changes_mask = _data_df.apply(lambda x: (x != x.shift()))  # count each change of signal
-    # _data_df_cnt = _data_df_changes_mask.cumsum()  # count each change of signal
     _data_df = _data_df.apply(lambda x: (x != x.shift()).cumsum())  # count each change of signal
     _data_df.drop_duplicates(inplace=True)  # just to reduce the amount of data
     _data_df = _data_df.groupby(level=0).apply(lambda x: x - x.iloc[0])  # count changes from 0 for each cycle

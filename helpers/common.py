@@ -3,14 +3,6 @@ import numpy as np
 
 
 def plot_overlapping_charts_concept(data: pd.DataFrame, color='random'):
-    """
-    if color == 'random':
-        @property
-        def _color():
-            return np.random.rand(3, )
-    else:
-        _color = color
-    """
     axs = list()
     data.groupby(level=0, axis=0).apply(
         lambda x: axs.append(x.droplevel(0).plot(subplots=True,
