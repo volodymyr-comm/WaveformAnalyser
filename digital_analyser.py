@@ -12,32 +12,6 @@ from helpers.digital import *
 from helpers.common import *
 
 
-def files2dataframe(path: str, name_regex: str, record_name_regex: str):
-    """
-    Only csv files are supported now.
-    Fast import without data filtering may consume a lot of RAM
-    todo:
-    * add filtering by columns
-    * add oversampling reduction (eg by consecutive unique rows)
-    """
-
-    # filter files and extract record names
-    file_name_pattern = re.compile(name_regex)
-    file_names = list(filter(file_name_pattern.match, os.listdir(path)))
-    record_name_pattern = re.compile(record_name_regex)
-    record_names = [record_name_pattern.match(i)[1] for i in file_names]
-    if len(record_names) != len(file_names):
-        raise Exception('One or more file name do not contain record name specified in regex')
-    # import files to multiindex dataframe
-    cwd = os.getcwd()
-    os.chdir(path)
-    collective_df = pd.concat(map(pd.read_csv, file_names), axis=0, keys=record_names)
-    os.chdir(cwd)
-    collective_df.index.names = ['Record', 'Row']
-    collective_df.sort_index(inplace=True)
-    return collective_df
-
-
 class DigitalAnalyser:
 
     def __init__(self):
@@ -47,6 +21,12 @@ class DigitalAnalyser:
 
     def import_from_directory(self, path: str, name_regex: str, record_name_regex: str):
         self._data_df = files2dataframe(path, name_regex, record_name_regex)
+
+    def import_from_dict(self, data: dict):
+        collective_df = pd.concat(data.values(), axis=0, keys=data.keys())
+        collective_df.index.names = ['Record', list(data.values())[0].index.name]
+        collective_df.sort_index(inplace=True)
+        self._data_df = collective_df
 
     def filter_columns(self, columns: Iterable[Union[str, int, re.Pattern]]):
         cols_before = self._data_df.columns
@@ -157,27 +137,34 @@ class DigitalAnalyser:
         plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
         plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
 
-    def show_std1_concept2(self):
+    def show_std2_concept2(self):
         change_times_df = self.change_times_df  # todo: thread-safety or copy
         mean_change_time_series = change_times_df.groupby(level=1).mean()
-        std_change_time_series = change_times_df.groupby(level=1).std()
+        std_change_time_series = change_times_df.groupby(level=1).std() * 2
         change_times_dist_to_mean_df = change_times_df.subtract(mean_change_time_series).abs()
         # Align indexes according to FutureWarning suggestion
         change_times_dist_to_mean_df, std_change_time_series = change_times_dist_to_mean_df.align(std_change_time_series, axis=0, copy=False)
-        within_std_mask = change_times_dist_to_mean_df.le(std_change_time_series, level=1)
-        plot_overlapping_charts_concept(change_times_df)
-        # plot_overlapping_charts_concept(change_times_df[within_std_mask], color='green')
-        # plot_overlapping_charts_concept(change_times_df[~within_std_mask], color='red')
+        within_std_mask = change_times_dist_to_mean_df.le(std_change_time_series)
+        plot_overlapping_charts_concept(change_times_df, color='black')
+        mean_change_time_series.plot(color='blue')
+        plot_overlapping_charts_concept(std_change_time_series, color='purple')
+        plot_overlapping_charts_concept(change_times_df[within_std_mask], color='green')
+        plot_overlapping_charts_concept(change_times_df[~within_std_mask], color='red')
         # todo for check only:
-        plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
-        plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
+        # plot_overlapping_charts_concept(change_times_df[within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='green')
+        # plot_overlapping_charts_concept(change_times_df[~within_std_mask].apply(lambda x: x + list(int(i) for i in x.index.get_level_values(0))), color='red')
 
 
 if __name__ == '__main__':
+    from data_examples_generator import generate_data_examples_dict
     da = DigitalAnalyser()
-    da.import_from_directory('data_examples', r'^process_[0-9]+.csv$', r'^process_([0-9]+)?.csv$')
-    da.filter_columns(['TIME', re.compile(r'^D\d+$')])
-    da.set_index('TIME')
+    # da.import_from_directory('data_examples', r'^process_[0-9]+.csv$', r'^process_([0-9]+)?.csv$')
+    data_dict = generate_data_examples_dict(100)
+    print('data generated')
+    da.import_from_dict(data_dict)
+    print('data imported')
+    # da.filter_columns(['TIME', re.compile(r'^D\d+$')])
+    # da.set_index('TIME')
     # da.set_time_index('TIME', unit='s')
     # da._resample_concept('0.01S')
     # print(da.get_dataframe())
@@ -188,5 +175,5 @@ if __name__ == '__main__':
     # da.plot2pdf('scatter.pdf', 'scatter')
     # print(da.get_dataframe().unstack(level=0).columns)
     # print(da.get_dataframe().swaplevel())
-    da.show_std1_concept2()
+    da.show_std2_concept2()
     plt.show()
